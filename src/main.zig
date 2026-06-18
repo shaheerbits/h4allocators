@@ -4,6 +4,8 @@
 ///
 const std = @import("std");
 const allocators = @import("allocators/index.zig");
-const arena_allocator = allocators.arena_allocator;
+// const arena_allocator = allocators.arena_allocator;
 
-pub fn main() !void {}
+pub fn main() !void {
+    // pass
+}
