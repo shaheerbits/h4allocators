@@ -7,6 +7,8 @@ const std = @import("std");
 
 /// The struct that defines memory block (used or free)
 const Block = struct {
+    const MIN_BLOCK_SIZE = 16;
+
     size: usize,
     free: bool,
     next: ?*Block,
@@ -39,7 +41,7 @@ const Block = struct {
 
     /// Returns a boolean representing whether this block can split or not.
     pub fn canSplit(self: *const Block, requested_size: usize) bool {
-        return self.size >= requested_size + @sizeOf(Block);
+        return self.size > requested_size + @sizeOf(Block) + MIN_BLOCK_SIZE;
     }
 
     /// Splits a block in two if block can split.
@@ -47,7 +49,9 @@ const Block = struct {
     pub fn split(self: *Block, requested_size: usize) ?*Block {
         if (!self.canSplit(requested_size)) return null;
 
-        const block: *Block = @ptrFromInt(@intFromPtr(self) + requested_size);
+        const block: *Block = @ptrFromInt(
+            @intFromPtr(self.memory()) + requested_size,
+        );
 
         block.* = .{
             .size = self.size - requested_size - @sizeOf(Block),
@@ -56,6 +60,7 @@ const Block = struct {
         };
 
         self.size = requested_size;
+        self.next = block;
 
         return block;
     }
@@ -91,6 +96,19 @@ pub const FreeListAllocator = struct {
         };
     }
 
+    /// Alocates and return a space in memory buffer.
+    pub fn alloc(self: *FreeListAllocator, size: usize) ![]u8 {
+        const block = self.head.findFreeBlock(size) orelse
+            return error.OutOfMemory;
+
+        _ = block.split(size);
+
+        block.free = false;
+
+        return block.memory()[0..size];
+    }
+
+    /// Marks the memory as free.
     pub fn free(_: *FreeListAllocator, ptr: *anyopaque) void {
         const block = Block.fromMemory(ptr);
         block.free = true;
