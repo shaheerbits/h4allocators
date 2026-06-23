@@ -6,15 +6,15 @@
 const std = @import("std");
 
 /// The struct that defines memory block (used or free)
-const Block = struct {
+pub const Block = struct {
     const MIN_BLOCK_SIZE = 16;
 
     size: usize,
     free: bool,
     next: ?*Block,
 
-    pub fn findFreeBlock(self: *const Block, size: usize) ?*Block {
-        var current: ?*const Block = self;
+    pub fn findFreeBlock(self: *Block, size: usize) ?*Block {
+        var current: ?*Block = self;
 
         while (current) |block| {
             if (block.size >= size and block.free) return block;
@@ -67,6 +67,8 @@ const Block = struct {
 };
 
 pub const FreeListAllocator = struct {
+    const DEFAULT_ALIGNMENT = @alignOf(Block);
+
     /// The buffer that defines a memory space
     buffer: []u8,
     /// The pointer that defines the first block of memory
@@ -74,7 +76,7 @@ pub const FreeListAllocator = struct {
 
     /// Initializes a FreeListAllocator. Returns a reference to the allocator.
     pub fn init(
-        buffer: []align(@alignOf(Block)) u8,
+        buffer: []align(DEFAULT_ALIGNMENT) u8,
     ) !FreeListAllocator {
         // If buffer size is less than 24 bytes return error
         if (buffer.len < @sizeOf(Block)) return error.BufferTooSmall;
@@ -96,12 +98,19 @@ pub const FreeListAllocator = struct {
         };
     }
 
+    /// Aligns the size to match the alignment of memory block
+    fn alignForward(value: usize, alignment: usize) usize {
+        return (value + alignment - 1) & ~(alignment - 1);
+    }
+
     /// Alocates and return a space in memory buffer.
     pub fn alloc(self: *FreeListAllocator, size: usize) ![]u8 {
-        const block = self.head.findFreeBlock(size) orelse
+        const actual_size = alignForward(size, DEFAULT_ALIGNMENT);
+
+        const block = self.head.findFreeBlock(actual_size) orelse
             return error.OutOfMemory;
 
-        _ = block.split(size);
+        _ = block.split(actual_size);
 
         block.free = false;
 
