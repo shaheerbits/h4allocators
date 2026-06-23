@@ -49,6 +49,7 @@ pub const Block = struct {
     pub fn split(self: *Block, requested_size: usize) ?*Block {
         if (!self.canSplit(requested_size)) return null;
 
+        // requested_size must already be aligned
         const block: *Block = @ptrFromInt(
             @intFromPtr(self.memory()) + requested_size,
         );
@@ -63,6 +64,30 @@ pub const Block = struct {
         self.next = block;
 
         return block;
+    }
+
+    /// Checks whether a block is adjacent to the other block.
+    pub fn isAdjacent(self: *const Block, next: *const Block) bool {
+        return @intFromPtr(next) == @intFromPtr(self.memory()) + self.size;
+    }
+
+    /// Merges two adjacent free blocks.
+    pub fn mergeWithNext(self: *Block) bool {
+        const next = self.next orelse
+            return false;
+
+        if (!self.free or !next.free)
+            return false;
+
+        if (!self.isAdjacent(next))
+            return false;
+
+        self.size +=
+            @sizeOf(Block) + next.size;
+
+        self.next = next.next;
+
+        return true;
     }
 };
 
@@ -100,6 +125,10 @@ pub const FreeListAllocator = struct {
 
     /// Aligns the size to match the alignment of memory block
     fn alignForward(value: usize, alignment: usize) usize {
+        std.debug.assert(
+            std.math.isPowerOfTwo(alignment),
+        );
+
         return (value + alignment - 1) & ~(alignment - 1);
     }
 
@@ -118,8 +147,19 @@ pub const FreeListAllocator = struct {
     }
 
     /// Marks the memory as free.
-    pub fn free(_: *FreeListAllocator, ptr: *anyopaque) void {
+    pub fn free(self: *FreeListAllocator, ptr: *anyopaque) void {
         const block = Block.fromMemory(ptr);
         block.free = true;
+
+        self.coalesce();
+    }
+
+    pub fn coalesce(self: *FreeListAllocator) void {
+        var current: *Block = self.head;
+
+        while (current.next != null) {
+            if (current.mergeWithNext()) continue;
+            current = current.next.?;
+        }
     }
 };
